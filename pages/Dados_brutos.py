@@ -12,7 +12,6 @@ def mensagem_sucesso():
     time.sleep(5)
     sucesso.empty()
 
-
 st.title('DADOS BRUTOS')
 
 url = 'https://labdados.com/produtos'
@@ -24,6 +23,7 @@ dados['Data da Compra'] = pd.to_datetime(dados['Data da Compra'], format = '%d/%
 with st.expander('Colunas'):
     colunas = st.multiselect('Selecione as colunas', list(dados.columns), list(dados.columns))
 
+st.sidebar.title('Filtros')
 with st.sidebar.expander('Nome do produto'):
     produtos = st.multiselect('Selecione os produtos', dados['Produto'].unique(), dados['Produto'].unique())
 with st.sidebar.expander('Categoria do produto'):
@@ -63,7 +63,7 @@ dados_filtrados = dados_filtrados[colunas]
 
 st.dataframe(dados_filtrados)
 
-st.markdown(f'A tabela possui :green[{dados_filtrados.shape[0]}] linhas e :green[{dados_filtrados.shape[1]}] colunas')
+st.markdown(f'A tabela possui :blue[{dados_filtrados.shape[0]}] linhas e :blue[{dados_filtrados.shape[1]}] colunas')
 
 st.markdown('Escreva um nome para o arquivo')
 coluna1, coluna2 = st.columns(2)
@@ -71,10 +71,4 @@ with coluna1:
     nome_arquivo = st.text_input('', label_visibility = 'collapsed', value = 'dados')
     nome_arquivo += '.csv'
 with coluna2:
-    st.download_button(
-        'Fazer o download da tabela em csv',
-        data = converte_csv(dados_filtrados),
-        file_name = nome_arquivo,
-        mime = 'text/csv',
-        on_click = mensagem_sucesso
-    )
+    st.download_button('Fazer o download da tabela em csv', data = converte_csv(dados_filtrados), file_name = nome_arquivo, mime = 'text/csv', on_click = mensagem_sucesso)
