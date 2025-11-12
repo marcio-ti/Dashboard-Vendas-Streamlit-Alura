@@ -14,9 +14,18 @@ def formata_numero(valor, prefixo=''):
     return f'{prefixo} {valor:.2f} milhões'
 
 
+@st.cache_data(ttl=3600)  # Cache por 1 hora
+def carregar_dados(regiao, ano):
+    url = 'https://labdados.com/produtos'
+    query_string = {'regiao': regiao.lower(), 'ano': ano}
+    response = requests.get(url, params=query_string)
+    dados = pd.DataFrame.from_dict(response.json())
+    dados['Data da Compra'] = pd.to_datetime(dados['Data da Compra'], format='%d/%m/%Y')
+    return dados
+
+
 st.title('DASHBOARD DE VENDAS :shopping_trolley:')
 
-url = 'https://labdados.com/produtos'
 regioes = ['Brasil', 'Centro-Oeste', 'Nordeste', 'Norte', 'Sudeste', 'Sul']
 
 st.sidebar.title('Filtros')
@@ -30,41 +39,63 @@ if todos_anos:
 else:
     ano = st.sidebar.slider('Ano', 2020, 2023)
 
-
-query_string = {'regiao':regiao.lower(), 'ano':ano}
-response = requests.get(url, params= query_string)
-dados = pd.DataFrame.from_dict(response.json())
-dados['Data da Compra'] = pd.to_datetime(dados['Data da Compra'], format='%d/%m/%Y')
+dados = carregar_dados(regiao, ano)
 filtro_vendedores = st.sidebar.multiselect('Vendedores', dados['Vendedor'].unique())
 if filtro_vendedores:
     dados = dados[dados['Vendedor'].isin(filtro_vendedores)]
 
+
+@st.cache_data
+def processar_dados(dados_json):
+    dados = pd.DataFrame.from_dict(dados_json)
+    dados['Data da Compra'] = pd.to_datetime(dados['Data da Compra'], format='%d/%m/%Y')
+    
+    ## Tabelas de receita
+    receita_estados = dados.groupby('Local da compra')[['Preço']].sum()
+    receita_estados = dados.drop_duplicates(subset='Local da compra')[['Local da compra', 'lat', 'lon']].merge(
+        receita_estados, left_on='Local da compra', right_index=True).sort_values('Preço', ascending=False)
+
+    receita_mensal = dados.set_index('Data da Compra').groupby(pd.Grouper(freq='M'))['Preço'].sum().reset_index()
+    receita_mensal['Ano'] = receita_mensal['Data da Compra'].dt.year
+    receita_mensal['Mes'] = receita_mensal['Data da Compra'].dt.month_name()
+
+    receita_categorias = dados.groupby('Categoria do Produto')[['Preço']].sum().sort_values('Preço', ascending=False)
+
+    ## Tabelas de quantidade de vendas
+    vendas_estados = pd.DataFrame(dados.groupby('Local da compra')['Preço'].count())
+    vendas_estados = dados.drop_duplicates(subset='Local da compra')[['Local da compra', 'lat', 'lon']].merge(
+        vendas_estados, left_on='Local da compra', right_index=True).sort_values('Preço', ascending=False)
+
+    vendas_mensal = pd.DataFrame(
+        dados.set_index('Data da Compra').groupby(pd.Grouper(freq='M'))['Preço'].count()).reset_index()
+    vendas_mensal['Ano'] = vendas_mensal['Data da Compra'].dt.year
+    vendas_mensal['Mes'] = vendas_mensal['Data da Compra'].dt.month_name()
+
+    vendas_categorias = pd.DataFrame(dados.groupby('Categoria do Produto')['Preço'].count().sort_values(ascending=False))
+
+    ## Tabelas vendedores
+    vendedores = pd.DataFrame(dados.groupby('Vendedor')['Preço'].agg(['sum', 'count']))
+    
+    return {
+        'receita_estados': receita_estados,
+        'receita_mensal': receita_mensal,
+        'receita_categorias': receita_categorias,
+        'vendas_estados': vendas_estados,
+        'vendas_mensal': vendas_mensal,
+        'vendas_categorias': vendas_categorias,
+        'vendedores': vendedores
+    }
+
+
 ## Tabelas
-### Tabelas de receita
-receita_estados = dados.groupby('Local da compra')[['Preço']].sum()
-receita_estados = dados.drop_duplicates(subset='Local da compra')[['Local da compra', 'lat', 'lon']].merge(
-    receita_estados, left_on='Local da compra', right_index=True).sort_values('Preço', ascending=False)
-
-receita_mensal = dados.set_index('Data da Compra').groupby(pd.Grouper(freq='M'))['Preço'].sum().reset_index()
-receita_mensal['Ano'] = receita_mensal['Data da Compra'].dt.year
-receita_mensal['Mes'] = receita_mensal['Data da Compra'].dt.month_name()
-
-receita_categorias = dados.groupby('Categoria do Produto')[['Preço']].sum().sort_values('Preço', ascending=False)
-
-### Tabelas de quantidade de vendas
-vendas_estados = pd.DataFrame(dados.groupby('Local da compra')['Preço'].count())
-vendas_estados = dados.drop_duplicates(subset='Local da compra')[['Local da compra', 'lat', 'lon']].merge(
-    vendas_estados, left_on='Local da compra', right_index=True).sort_values('Preço', ascending=False)
-
-vendas_mensal = pd.DataFrame(
-    dados.set_index('Data da Compra').groupby(pd.Grouper(freq='M'))['Preço'].count()).reset_index()
-vendas_mensal['Ano'] = vendas_mensal['Data da Compra'].dt.year
-vendas_mensal['Mes'] = vendas_mensal['Data da Compra'].dt.month_name()
-
-vendas_categorias = pd.DataFrame(dados.groupby('Categoria do Produto')['Preço'].count().sort_values(ascending=False))
-
-### Tabelas vendedores
-vendedores = pd.DataFrame(dados.groupby('Vendedor')['Preço'].agg(['sum', 'count']))
+dados_processados = processar_dados(dados.to_dict('records'))
+receita_estados = dados_processados['receita_estados']
+receita_mensal = dados_processados['receita_mensal']
+receita_categorias = dados_processados['receita_categorias']
+vendas_estados = dados_processados['vendas_estados']
+vendas_mensal = dados_processados['vendas_mensal']
+vendas_categorias = dados_processados['vendas_categorias']
+vendedores = dados_processados['vendedores']
 
 ## Gráficos
 ### Gráficos receita

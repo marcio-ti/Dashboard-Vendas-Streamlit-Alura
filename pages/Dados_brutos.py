@@ -7,18 +7,25 @@ import time
 def converte_csv(df):
     return df.to_csv(index = False).encode('utf-8')
 
+
+@st.cache_data(ttl=3600)  # Cache por 1 hora
+def carregar_dados_brutos():
+    url = 'https://labdados.com/produtos'
+    response = requests.get(url)
+    dados = pd.DataFrame.from_dict(response.json())
+    dados['Data da Compra'] = pd.to_datetime(dados['Data da Compra'], format = '%d/%m/%Y')
+    return dados
+
+
 def mensagem_sucesso():
     sucesso = st.success('Arquivo baixado com sucesso!', icon = "✅")
     time.sleep(5)
     sucesso.empty()
 
+
 st.title('DADOS BRUTOS')
 
-url = 'https://labdados.com/produtos'
-
-response = requests.get(url)
-dados = pd.DataFrame.from_dict(response.json())
-dados['Data da Compra'] = pd.to_datetime(dados['Data da Compra'], format = '%d/%m/%Y')
+dados = carregar_dados_brutos()
 
 with st.expander('Colunas'):
     colunas = st.multiselect('Selecione as colunas', list(dados.columns), list(dados.columns))
